@@ -6,6 +6,7 @@ QVision::QVision(QObject *parent)
     : QObject{parent}
 {
     frame = cv::Mat(2048,2448,CV_8UC1);
+    templ = cv::Mat(2048,2448,CV_8UC3);
     driver.MVS_DeviceList();
     driver.MVS_OpenDevice(0);
     timerID = startTimer(20,Qt::PreciseTimer);
@@ -29,71 +30,21 @@ void QVision::QVision_Stop()
 void QVision::QVision_GframeProcessInit()
 {
     //templ = frame.clone();
-    Gframe = frame.clone();
+    Gframe = cv::Mat(4000,4000,CV_8UC3,cv::Scalar(0x1F,0x1E,0X33));
+    cv::cvtColor(frame,templ,cv::COLOR_GRAY2BGR);
+    templ.copyTo(Gframe(cv::Rect(Gframe.cols - templ.cols, Gframe.rows - templ.rows, templ.cols, templ.rows)));
     //templ = Gframe;
     frameRoi = cv::Rect(frame.cols / 8*3, frame.rows / 8*3, frame.cols /4, frame.rows /4);
 }
 
 void QVision::QVision_GframeProcessOnce()
 {
-   /* double minVal, maxVal;
-    cv::Point minLoc = {0}, maxLoc = {0};
-    cv::Mat temp = frame(frameRoi).clone();
-    //qDebug() << temp.cols << " " << temp.rows;
-    cv::matchTemplate(temp,templ,res,cv::TM_CCOEFF_NORMED);
-    //qDebug() << templ.cols << " " << templ.rows;
-    //qDebug() << res.cols << " " << res.rows;
-    cv::minMaxLoc(res, &minVal, &maxVal, &minLoc, &maxLoc);
-    //qDebug() << maxLoc.x << " " << maxLoc.y;
-
-    int centor_y_inGflag = maxLoc.x+temp.cols/2;
-    int centor_x_inGflag = maxLoc.y+temp.rows/2;
-
-    int l_y = centor_y_inGflag - frame.cols / 2;
-    int t_x = centor_x_inGflag - frame.rows / 2;
-    int r_y = centor_y_inGflag + frame.cols / 2;
-    int b_x = centor_x_inGflag + frame.rows / 2;
-
-    int left = l_y < 0 ? -l_y : 0;
-    int right = Gframe.cols >= r_y ? 0 : r_y - Gframe.cols;
-    int top = t_x < 0 ? -t_x : 0;
-    int bottom = Gframe.rows >= b_x ? 0 : b_x - Gframe.rows;
-
-    cv::Mat newGframe(cv::Size(Gframe.cols+left+right,Gframe.rows+top+bottom),CV_8UC1);
-    cv::copyMakeBorder(Gframe,newGframe,top,bottom,left,right,cv::BORDER_CONSTANT,255);
-
-    l_y += left;
-    t_x += top;
-
-    frame.copyTo(newGframe(cv::Rect(l_y,t_x,frame.cols,frame.rows)));
-
-    Gframe = newGframe.clone();
-
-    templ = Gframe;*/
-
-    //qDebug() << left << " " << right << " " << top << " " << bottom;
-
-    //qDebug() << "-----------------------------";
-
-    /*std::vector<cv::Mat>images;
-
     cv::cvtColor(frame,templ,cv::COLOR_GRAY2BGR);
-    cv::cvtColor(Gframe,res,cv::COLOR_GRAY2BGR);
 
-    images.push_back(templ);
-    images.push_back(res);
-
-    cv::Mat newGframe;
-    cv::Stitcher::Status status = stitcher->stitch(images, newGframe);
-
-    if (status == cv::Stitcher::OK)
-    {
-        Gframe = newGframe.clone();
-    }*/
     std::vector<cv::KeyPoint>keypoint_Gframe, keypoint_frame;
     cv::Mat descriptor_Gframe, descriptor_frame;
     detector->detectAndCompute(Gframe, cv::Mat(), keypoint_Gframe, descriptor_Gframe);
-    detector->detectAndCompute(frame, cv::Mat(), keypoint_frame, descriptor_frame);
+    detector->detectAndCompute(templ, cv::Mat(), keypoint_frame, descriptor_frame);
 
     cv::FlannBasedMatcher matcher;
     std::vector<cv::DMatch>matches;
@@ -133,38 +84,92 @@ void QVision::QVision_GframeProcessOnce()
     }
 
     cv::Mat H = findHomography(goodkeypoint_frame, goodkeypoint_Gframe, cv::RANSAC);
+    cv::Mat WarpImg;
+    warpPerspective(templ, WarpImg, H, Gframe.size(),0,0, cv::Scalar(0x1F,0x1E,0X33));
 
-    cv::Mat ori = cv::Mat::zeros(3, 1, CV_64FC1); ori.at<double>(2) = 1;
-    cv::Mat dpix = H * ori;
+    for (int a = 0; a < Gframe.rows; a++)
+    {
+        for (int b = 0; b < Gframe.cols; b++)
+        {
+            cv::Vec3b GframePix = Gframe.at<cv::Vec3b>(a,b);
+            cv::Vec3b WarpImgPix = WarpImg.at<cv::Vec3b>(a, b);
+            bool con1 = (GframePix == cv::Vec3b(0x1F,0x1E,0X33));
+            bool con2 = (WarpImgPix == cv::Vec3b(0x1F,0x1E,0X33));
+            if (con1 && con2)
+            {
+                ;
+            }
+            else if (!con1 && con2)
+            {
+                ;
+            }
+            else if (con1 && !con2)
+            {
+                Gframe.at<cv::Vec3b>(a, b) = WarpImgPix;
+            }
+            else
+            {
+                Gframe.at<cv::Vec3b>(a, b) = WarpImgPix / 2 + GframePix / 2;
+            }
+        }
+    }
+}
 
-    //int dy = (int)H.at<double>(2);
-    //int dx = (int)H.at<double>(5);
+void QVision::QVision_GframeFix()
+{
+    int fristRow = -1, firstCol = -1;
+    for (int a = 0; a < Gframe.rows; a++)
+    {
+        for (int b = 0; b < Gframe.cols; b++)
+        {
+            cv::Vec3b GframePix = Gframe.at<cv::Vec3b>(a,b);
+            bool con1 = (GframePix == cv::Vec3b(0x1F,0x1E,0X33));
+            if(!con1)
+            {
+                fristRow = a+1;
+                //firstCol = b;
+                break;
+            }
+        }
+        if(fristRow > 0)
+        {
+            break;
+        }
+    }
 
-    int dy = (int)dpix.at<double>(0);
-    int dx = (int)dpix.at<double>(1);
+    for (int b = 0; b < Gframe.cols; b++)
+    {
+        for (int a = 0; a < Gframe.rows; a++)
+        {
+            cv::Vec3b GframePix = Gframe.at<cv::Vec3b>(a,b);
+            bool con1 = (GframePix == cv::Vec3b(0x1F,0x1E,0X33));
+            if(!con1)
+            {
+                //fristRow = a;
+                firstCol = b+1;
+                break;
+            }
+        }
+        if(firstCol > 0)
+        {
+            break;
+        }
+    }
 
-    int l_y = dy;
-    int t_x = dx;
-    int r_y = dy + frame.cols;
-    int b_x = dx + frame.rows;
+    qDebug() << fristRow << " " << firstCol;
 
-    int left = l_y < 0 ? -l_y : 0;
-    int right = Gframe.cols >= r_y ? 0 : r_y - Gframe.cols;
-    int top = t_x < 0 ? -t_x : 0;
-    int bottom = Gframe.rows >= b_x ? 0 : b_x - Gframe.rows;
-
-    /*Mat WarpImg;
-        warpPerspective(frame, WarpImg, H, Size(frame.cols + (dy > 0 ? dy : -dy), frame.rows + (dx > 0 ? dx : -dx)));*/
-
-    cv::Mat res = cv::Mat(cv::Size(Gframe.cols + left + right, Gframe.rows + top + bottom), CV_8UC1);
-    cv::copyMakeBorder(Gframe, res, top, bottom, left, right, cv::BORDER_CONSTANT, 255);
-
-    l_y += left;
-    t_x += top;
-
-    frame.copyTo(res(cv::Rect(l_y, t_x, frame.cols, frame.rows)));
-
-    Gframe = res.clone();
+    if(fristRow < 0 || firstCol < 0) return;
+    cv::Mat temp(Gframe.rows-fristRow,Gframe.cols-firstCol,CV_8UC3);
+    temp = Gframe(cv::Rect(firstCol,fristRow,temp.cols,temp.rows)).clone();
+    Gframe = cv::Mat(temp.size(),CV_8UC3);
+    for (int a = 0; a < temp.rows; a++)
+    {
+        for (int b = 0; b < temp.cols; b++)
+        {
+            cv::Vec3b tempPix = temp.at<cv::Vec3b>(a,b);
+            Gframe.at<cv::Vec3b>(a,b) = tempPix;
+        }
+    }
 }
 
 void QVision::QVision_ProcessOnce()
@@ -212,6 +217,7 @@ void QVision::QVision_ProcessOnce()
     }
 
     cv::Mat H = findHomography(goodkeypoint_frame, goodkeypoint_Gframe, cv::RANSAC);
+    qDebug() << (int)H.at<uchar>(0,2) << " " << (int)H.at<uchar>(1,2);
 
     cv::Mat ori = cv::Mat::zeros(3, 1, CV_64FC1); ori.at<double>(2) = 1;
     cv::Mat dpix = H * ori;

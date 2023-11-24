@@ -106,6 +106,11 @@ void MainWindow::timerEvent(QTimerEvent *e)
             {
                 ui->pushButtonScan->setText("scan");
                 state = STATE_IDLE;
+                vision->QVision_GframeFix();
+                cv::Mat show;
+                cv::cvtColor(vision->Gframe,show,cv::COLOR_BGR2GRAY);
+                QImage img(show.data,show.cols,show.rows,QImage::Format_Grayscale8);
+                ui->labelGImg->setPixmap(QPixmap::fromImage(img).scaled(ui->labelGImg->size(),Qt::KeepAspectRatio));
                 //cv::imshow("temp",vision->Gframe);
             }
         }
@@ -200,28 +205,23 @@ void MainWindow::runInThread()
                     PZT->Device_SendTarget<float>(data,3);
 
                     //QThread::msleep(1500);
-                    QTime _Timer = QTime::currentTime().addMSecs(500);
+                    QTime _Timer = QTime::currentTime().addMSecs(400);
                     while( QTime::currentTime() < _Timer ) ;//QCoreApplication::processEvents(QEventLoop::AllEvents, 100);
 
                     vision->QVision_GframeProcessOnce();
-                    //qDebug()<<vision->Gframe.isContinuous();
-                    QImage img = QImage(vision->Gframe.cols,vision->Gframe.rows,QImage::Format_Grayscale8);
-                    //qDebug()<<vision->Gframe.cols<<" "<<vision->Gframe.rows;
-                    for(int i = 0; i < vision->Gframe.cols; i++)
+                    cv::Mat show;
+                    cv::cvtColor(vision->Gframe,show,cv::COLOR_BGR2GRAY);
+                    //QImage img = QImage(show.cols,show.rows,QImage::Format_Grayscale8);
+                    QImage img(show.data,show.cols,show.rows,QImage::Format_Grayscale8);
+                    /*for(int i = 0; i < show.cols; i++)
                     {
-                        for(int j = 0; j < vision->Gframe.rows; j++)
+                        for(int j = 0; j < show.rows; j++)
                         {
-                            //qDebug()<<i<<" "<<j;
-                            uchar data = vision->Gframe.at<uchar>(j,i);
+                            uchar data = show.at<uchar>(j,i);
                             img.setPixel(i,j,qRgb(data,data,data));
                         }
-                    }
-                    //QImage img = QImage(vision->Gframe.data,vision->Gframe.cols,vision->Gframe.rows,QImage::Format_Grayscale8);
+                    }*/
                     ui->labelGImg->setPixmap(QPixmap::fromImage(img).scaled(ui->labelGImg->size(),Qt::KeepAspectRatio));
-
-                    //QThread::msleep(1000);
-                    //while( QTime::currentTime() < _Timer );
-
                 }
             }
             else
@@ -234,14 +234,15 @@ void MainWindow::runInThread()
                     PZT->Device_SendTarget<float>(data,3);
 
                     //QThread::msleep(1500);
-                    QTime _Timer = QTime::currentTime().addMSecs(500);
+                    QTime _Timer = QTime::currentTime().addMSecs(400);
                     while( QTime::currentTime() < _Timer ) ;//QCoreApplication::processEvents(QEventLoop::AllEvents, 100);
 
                     vision->QVision_GframeProcessOnce();
-                    //qDebug()<<vision->Gframe.isContinuous();
-                    //qDebug()<<vision->Gframe.cols<<" "<<vision->Gframe.rows;
-                    QImage img = QImage(vision->Gframe.cols,vision->Gframe.rows,QImage::Format_Grayscale8);
-                    for(int i = 0; i < vision->Gframe.cols; i++)
+                    cv::Mat show;
+                    cv::cvtColor(vision->Gframe,show,cv::COLOR_BGR2GRAY);
+                    //QImage img = QImage(show.cols,show.rows,QImage::Format_Grayscale8);
+                    QImage img(show.data,show.cols,show.rows,QImage::Format_Grayscale8);
+                    /*for(int i = 0; i < vision->Gframe.cols; i++)
                     {
                         for(int j = 0; j < vision->Gframe.rows; j++)
                         {
@@ -249,12 +250,8 @@ void MainWindow::runInThread()
                             uchar data = vision->Gframe.at<uchar>(j,i);
                             img.setPixel(i,j,qRgb(data,data,data));
                         }
-                    }
-                    //QImage img = QImage(vision->Gframe.data,vision->Gframe.cols,vision->Gframe.rows,QImage::Format_Grayscale8);
+                    }*/
                     ui->labelGImg->setPixmap(QPixmap::fromImage(img).scaled(ui->labelGImg->size(),Qt::KeepAspectRatio));
-
-                    //QThread::msleep(1000);
-                    //while( QTime::currentTime() < _Timer );
                 }
             }
         }

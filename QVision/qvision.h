@@ -22,6 +22,7 @@ public:
     void QVision_Stop(void);
     void QVision_GframeProcessInit(void);
     void QVision_GframeProcessOnce(void);
+    void QVision_GframeFix(void);
     void QVision_ProcessOnce(void);
     void QVision_Process(void);
     void QVision_ProcessInit(void);
