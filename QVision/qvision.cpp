@@ -174,14 +174,20 @@ void QVision::QVision_GframeFix()
 
 void QVision::QVision_ProcessOnce()
 {
-    std::vector<cv::KeyPoint> keypoint_frame;
-    cv::Mat descriptor_frame;
-    detector->detectAndCompute(Gframe, cv::Mat(), Gkeypoints, Gdescriptors);
-    detector->detectAndCompute(frame, cv::Mat(), keypoint_frame, descriptor_frame);
+    cv::cvtColor(frame,templ,cv::COLOR_GRAY2BGR);
+
+    ///TODO: detect prob and frectures
+
+    ///TODO: mask picture under prob
+
+    std::vector<cv::KeyPoint>keypoint_Gframe, keypoint_frame;
+    cv::Mat descriptor_Gframe, descriptor_frame;
+    detector->detectAndCompute(Gframe, cv::Mat(), keypoint_Gframe, descriptor_Gframe);
+    detector->detectAndCompute(templ, cv::Mat(), keypoint_frame, descriptor_frame);
 
     cv::FlannBasedMatcher matcher;
     std::vector<cv::DMatch>matches;
-    matcher.match(Gdescriptors, descriptor_frame, matches);
+    matcher.match(descriptor_Gframe, descriptor_frame, matches);
 
     double Max = 0.0;
     for (int i = 0; i < matches.size(); i++)
@@ -209,7 +215,7 @@ void QVision::QVision_ProcessOnce()
                 */
             //注：对image_right图像做透视变换，故goodkeypoint_left对应queryIdx，goodkeypoint_right对应trainIdx
             //int queryIdx –>是测试图像的特征点描述符（descriptor）的下标，同时也是描述符对应特征点（keypoint)的下标。
-            goodkeypoint_Gframe.push_back(Gkeypoints[matches[i].queryIdx].pt);
+            goodkeypoint_Gframe.push_back(keypoint_Gframe[matches[i].queryIdx].pt);
             //int trainIdx –> 是样本图像的特征点描述符的下标，同样也是相应的特征点的下标。
             goodkeypoint_frame.push_back(keypoint_frame[matches[i].trainIdx].pt);
             goodmatches.push_back(matches[i]);
@@ -217,28 +223,28 @@ void QVision::QVision_ProcessOnce()
     }
 
     cv::Mat H = findHomography(goodkeypoint_frame, goodkeypoint_Gframe, cv::RANSAC);
-    qDebug() << (int)H.at<uchar>(0,2) << " " << (int)H.at<uchar>(1,2);
-
     cv::Mat ori = cv::Mat::zeros(3, 1, CV_64FC1); ori.at<double>(2) = 1;
     cv::Mat dpix = H * ori;
 
     px = dpix.at<double>(1);
     py = dpix.at<double>(0);
+
+    qDebug() << px << " " << py;
 }
 
 void QVision::QVision_Process()
 {
     while(isStart)
     {
-        while(!newFrame);
-        newFrame = false;
+        QTime _Timer = QTime::currentTime().addMSecs(50);
         QVision_ProcessOnce();
+        while( QTime::currentTime() < _Timer ) QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
     }
 }
 
 void QVision::QVision_ProcessInit()
 {
-    detector->detectAndCompute(Gframe, cv::Mat(), Gkeypoints, Gdescriptors);
+    //detector->detectAndCompute(Gframe, cv::Mat(), Gkeypoints, Gdescriptors);
     QFuture<void> thread = QtConcurrent::run(&QVision::QVision_Process,this);
     watcher.setFuture(thread);
 }

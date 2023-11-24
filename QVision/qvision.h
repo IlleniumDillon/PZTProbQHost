@@ -40,8 +40,8 @@ public:
     cv::Mat res;
     cv::Rect frameRoi, templRoi;
     cv::Ptr<cv::xfeatures2d::SURF>detector = cv::xfeatures2d::SURF::create(1500);
-    std::vector<cv::KeyPoint>Gkeypoints;
-    cv::Mat Gdescriptors;
+    //std::vector<cv::KeyPoint>Gkeypoints;
+    //cv::Mat Gdescriptors;
     float dx = 0,dy = 0,x = 0,y = 0;
     float px = -1, py = -1;
     int timerID;
