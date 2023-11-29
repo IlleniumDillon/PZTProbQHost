@@ -33,6 +33,7 @@ HEADERS += \
     QOscilloScope/qoscilloscope.h \
     QPlanner/qastar.h \
     QPlanner/qplanner.h \
+    QPlanner/qplanner_common.h \
     QVision/mvs_driver.h \
     QVision/qvision.h \
     mainwindow.h

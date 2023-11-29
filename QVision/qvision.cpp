@@ -236,7 +236,7 @@ void QVision::QVision_Process()
 {
     while(isStart)
     {
-        QTime _Timer = QTime::currentTime().addMSecs(50);
+        QTime _Timer = QTime::currentTime().addMSecs(100);
         QVision_ProcessOnce();
         while( QTime::currentTime() < _Timer ) QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
     }
