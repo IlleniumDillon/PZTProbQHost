@@ -2,6 +2,7 @@
 #include "ui_mainwindow.h"
 #include "QKeyEvent"
 #include "QWheelEvent"
+#include "QDateTime"
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -47,6 +48,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     connect(vision,SIGNAL(QVision_NewFrameReady(cv::Mat)),this,SLOT(showFrame(cv::Mat)));
     connect(this,SIGNAL(GframeReady()),this,SLOT(showGframe()));
+    connect(vision,SIGNAL(QVision_ProcessDone()),this,SLOT(showVisionData()));
 
     planner->moveToThread(&QPlannerThread);
     vision->moveToThread(&QVisionThread);
@@ -129,7 +131,7 @@ void MainWindow::timerEvent(QTimerEvent *e)
                 state = STATE_IDLE;
                 vision->QVision_GframeFix();
                 //showGframe();
-                QFuture<void> thread = QtConcurrent::run(&MainWindow::showGframe,this);
+                //QFuture<void> thread = QtConcurrent::run(&MainWindow::showGframe,this);
                 //emit GframeReady();
                 //cv::imshow("temp",vision->Gframe);
             }
@@ -139,6 +141,7 @@ void MainWindow::timerEvent(QTimerEvent *e)
             if(watcher.isFinished())
             {
                 ui->pushButtonInit->setText("init");
+
                 state = STATE_IDLE;
                 //cv::imshow("temp",vision->Gframe);
             }
@@ -272,18 +275,20 @@ void MainWindow::runInThread()
 
 void MainWindow::showGframe()
 {
-    /*Mat show(vision->Gframe.size(),vision->Gframe.type());
-    for (int a = 0; a < show.rows; a++)
-    {
-        for (int b = 0; b < show.cols; b++)
-        {
-            uchar tempPix = vision->Gframe.at<uchar>(a,b);
-            show.at<uchar>(a,b) = tempPix;
-        }
-    }*/
     Mat show = vision->Gframe;
     QImage img(show.data,show.cols,show.rows,QImage::Format_Grayscale8);
     ui->labelGImg->setPixmap(QPixmap::fromImage(img).scaled(ui->labelGImg->size(),Qt::KeepAspectRatio));
+}
+
+void MainWindow::showVisionData()
+{
+    static qint64 nTime = 0;
+    QDateTime time= QDateTime::currentDateTime();
+    nTime -= time.currentMSecsSinceEpoch();
+    ui->label_x->setText(QString("x:%1").arg(vision->px));
+    ui->label_y->setText(QString("y:%1").arg(vision->py));
+    ui->label_fps->setText(QString("time:%1ms").arg(nTime));
+    nTime = time.currentMSecsSinceEpoch();
 }
 
 void MainWindow::showFrame(cv::Mat frame)

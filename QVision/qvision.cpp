@@ -248,7 +248,9 @@ void QVision::QVision_ProcessOnce()
     px = dpix.at<double>(1);
     py = dpix.at<double>(0);
 
-    qDebug() << px << " " << py;
+    //qDebug() << px << " " << py;
+
+    emit QVision_ProcessDone();
 }
 
 void QVision::QVision_Process()
@@ -256,7 +258,12 @@ void QVision::QVision_Process()
     while(isStart)
     {
         QTime _Timer = QTime::currentTime().addMSecs(100);
-        QVision_ProcessOnce();
+        if(newFrame == true)
+        {
+            newFrame = false;
+            QVision_ProcessOnce();
+        }
+
         while( QTime::currentTime() < _Timer ) QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
     }
 }

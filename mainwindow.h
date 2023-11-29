@@ -45,6 +45,7 @@ signals:
 public slots:
     void showFrame(cv::Mat frame);
     void showGframe();
+    void showVisionData();
 
 private slots:
     void on_pushButtonScan_clicked();

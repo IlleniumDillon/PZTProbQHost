@@ -43,6 +43,7 @@ public:
 
 signals:
     void QVision_NewFrameReady(cv::Mat frame);
+    void QVision_ProcessDone();
 public:
     MVS_driver driver;
     cv::Mat frame;
