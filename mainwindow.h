@@ -29,6 +29,7 @@ public:
         STATE_IDLE,
         STATE_INIT,
         STATE_SCAN,
+        STATE_SCAN_FINISH
     }State;
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
@@ -38,8 +39,12 @@ public:
     void wheelEvent(QWheelEvent *event);
     void runInThread();
 
+signals:
+    void GframeReady();
+
 public slots:
     void showFrame(cv::Mat frame);
+    void showGframe();
 
 private slots:
     void on_pushButtonScan_clicked();

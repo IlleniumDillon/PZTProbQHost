@@ -6,7 +6,7 @@ QVision::QVision(QObject *parent)
     : QObject{parent}
 {
     frame = cv::Mat(2048,2448,CV_8UC1);
-    templ = cv::Mat(2048,2448,CV_8UC3);
+    templ = cv::Mat(2048,2448,CV_8UC1);
     driver.MVS_DeviceList();
     driver.MVS_OpenDevice(0);
     timerID = startTimer(20,Qt::PreciseTimer);
@@ -30,25 +30,29 @@ void QVision::QVision_Stop()
 void QVision::QVision_GframeProcessInit()
 {
     //templ = frame.clone();
-    Gframe = cv::Mat(4000,4000,CV_8UC3,cv::Scalar(0x1F,0x1E,0X33));
-    cv::cvtColor(frame,templ,cv::COLOR_GRAY2BGR);
-    templ.copyTo(Gframe(cv::Rect(Gframe.cols - templ.cols, Gframe.rows - templ.rows, templ.cols, templ.rows)));
+    Gframe_gpu = cv::cuda::GpuMat(4000,4000,CV_8UC1,cv::Scalar(0x1F));
+    frame_gpu.upload(frame);
+    frame_gpu.copyTo(Gframe_gpu(cv::Rect(Gframe_gpu.cols - frame_gpu.cols, Gframe_gpu.rows - frame_gpu.rows, frame_gpu.cols, frame_gpu.rows)));
     //templ = Gframe;
     frameRoi = cv::Rect(frame.cols / 8*3, frame.rows / 8*3, frame.cols /4, frame.rows /4);
 }
 
 void QVision::QVision_GframeProcessOnce()
 {
-    cv::cvtColor(frame,templ,cv::COLOR_GRAY2BGR);
+    frame_gpu.upload(frame);
+
+    cv::cuda::GpuMat keypoint_Gframe_g, keypoint_frame_g;
+    cv::cuda::GpuMat descriptor_Gframe_g, descriptor_frame_g;
+    detector->detectWithDescriptors(Gframe_gpu, cv::cuda::GpuMat(), keypoint_Gframe_g, descriptor_Gframe_g);
+    detector->detectWithDescriptors(frame_gpu, cv::cuda::GpuMat(), keypoint_frame_g, descriptor_frame_g);
+
+    std::vector<cv::DMatch>matches;
+    cv::Ptr<cv::cuda::DescriptorMatcher> matcher = cv::cuda::DescriptorMatcher::createBFMatcher(cv::NORM_L2);;
+    matcher->match(descriptor_Gframe_g, descriptor_frame_g, matches);
 
     std::vector<cv::KeyPoint>keypoint_Gframe, keypoint_frame;
-    cv::Mat descriptor_Gframe, descriptor_frame;
-    detector->detectAndCompute(Gframe, cv::Mat(), keypoint_Gframe, descriptor_Gframe);
-    detector->detectAndCompute(templ, cv::Mat(), keypoint_frame, descriptor_frame);
-
-    cv::FlannBasedMatcher matcher;
-    std::vector<cv::DMatch>matches;
-    matcher.match(descriptor_Gframe, descriptor_frame, matches);
+    detector->downloadKeypoints(keypoint_Gframe_g, keypoint_Gframe);
+    detector->downloadKeypoints(keypoint_frame_g, keypoint_frame);
 
     double Max = 0.0;
     for (int i = 0; i < matches.size(); i++)
@@ -84,17 +88,21 @@ void QVision::QVision_GframeProcessOnce()
     }
 
     cv::Mat H = findHomography(goodkeypoint_frame, goodkeypoint_Gframe, cv::RANSAC);
-    cv::Mat WarpImg;
-    warpPerspective(templ, WarpImg, H, Gframe.size(),0,0, cv::Scalar(0x1F,0x1E,0X33));
+    cv::cuda::GpuMat WarpImg;
+    cv::cuda::warpPerspective(frame_gpu, WarpImg, H, Gframe_gpu.size(),0,0, cv::Scalar(0x1F));
 
-    for (int a = 0; a < Gframe.rows; a++)
+    cv::Mat WarpImg_;
+    Gframe_gpu.download(Gframe);
+    WarpImg.download(WarpImg_);
+
+    for (int a = 0; a < Gframe_gpu.rows; a++)
     {
-        for (int b = 0; b < Gframe.cols; b++)
+        for (int b = 0; b < Gframe_gpu.cols; b++)
         {
-            cv::Vec3b GframePix = Gframe.at<cv::Vec3b>(a,b);
-            cv::Vec3b WarpImgPix = WarpImg.at<cv::Vec3b>(a, b);
-            bool con1 = (GframePix == cv::Vec3b(0x1F,0x1E,0X33));
-            bool con2 = (WarpImgPix == cv::Vec3b(0x1F,0x1E,0X33));
+            uchar GframePix = Gframe.ptr(a)[b];
+            uchar WarpImgPix = WarpImg_.ptr(a)[b];
+            bool con1 = (GframePix == 0x1F);
+            bool con2 = (WarpImgPix == 0x1F);
             if (con1 && con2)
             {
                 ;
@@ -105,14 +113,16 @@ void QVision::QVision_GframeProcessOnce()
             }
             else if (con1 && !con2)
             {
-                Gframe.at<cv::Vec3b>(a, b) = WarpImgPix;
+                Gframe.ptr(a)[b] = WarpImgPix;
             }
             else
             {
-                Gframe.at<cv::Vec3b>(a, b) = WarpImgPix / 2 + GframePix / 2;
+                WarpImg_.ptr(a)[b] = WarpImgPix / 2 + GframePix / 2;
             }
         }
     }
+
+    Gframe_gpu.upload(Gframe);
 }
 
 void QVision::QVision_GframeFix()
@@ -122,8 +132,8 @@ void QVision::QVision_GframeFix()
     {
         for (int b = 0; b < Gframe.cols; b++)
         {
-            cv::Vec3b GframePix = Gframe.at<cv::Vec3b>(a,b);
-            bool con1 = (GframePix == cv::Vec3b(0x1F,0x1E,0X33));
+            uchar GframePix = Gframe.at<uchar>(a,b);
+            bool con1 = (GframePix == 0x1f);
             if(!con1)
             {
                 fristRow = a+1;
@@ -141,8 +151,8 @@ void QVision::QVision_GframeFix()
     {
         for (int a = 0; a < Gframe.rows; a++)
         {
-            cv::Vec3b GframePix = Gframe.at<cv::Vec3b>(a,b);
-            bool con1 = (GframePix == cv::Vec3b(0x1F,0x1E,0X33));
+            uchar GframePix = Gframe.at<uchar>(a,b);
+            bool con1 = (GframePix == 0x1f);
             if(!con1)
             {
                 //fristRow = a;
@@ -159,35 +169,44 @@ void QVision::QVision_GframeFix()
     qDebug() << fristRow << " " << firstCol;
 
     if(fristRow < 0 || firstCol < 0) return;
-    cv::Mat temp(Gframe.rows-fristRow,Gframe.cols-firstCol,CV_8UC3);
+    cv::Mat temp(Gframe.rows-fristRow,Gframe.cols-firstCol,CV_8UC1);
     temp = Gframe(cv::Rect(firstCol,fristRow,temp.cols,temp.rows)).clone();
-    Gframe = cv::Mat(temp.size(),CV_8UC3);
+    Gframe = cv::Mat(temp.size(),CV_8UC1);
     for (int a = 0; a < temp.rows; a++)
     {
         for (int b = 0; b < temp.cols; b++)
         {
-            cv::Vec3b tempPix = temp.at<cv::Vec3b>(a,b);
-            Gframe.at<cv::Vec3b>(a,b) = tempPix;
+            uchar tempPix = temp.at<uchar>(a,b);
+            Gframe.at<uchar>(a,b) = tempPix;
         }
     }
+    Gframe_gpu = cv::cuda::GpuMat(Gframe.size(),Gframe.type());
+    Gframe_gpu.upload(Gframe);
+    //Gframe_gpu = cv::cuda::GpuMat(Gframe);
+
+
 }
 
 void QVision::QVision_ProcessOnce()
 {
-    cv::cvtColor(frame,templ,cv::COLOR_GRAY2BGR);
+    frame_gpu.upload(frame);
 
     ///TODO: detect prob and frectures
 
     ///TODO: mask picture under prob
 
-    std::vector<cv::KeyPoint>keypoint_Gframe, keypoint_frame;
-    cv::Mat descriptor_Gframe, descriptor_frame;
-    detector->detectAndCompute(Gframe, cv::Mat(), keypoint_Gframe, descriptor_Gframe);
-    detector->detectAndCompute(templ, cv::Mat(), keypoint_frame, descriptor_frame);
+    cv::cuda::GpuMat keypoint_Gframe_g, keypoint_frame_g;
+    cv::cuda::GpuMat descriptor_Gframe_g, descriptor_frame_g;
+    detector->detectWithDescriptors(Gframe_gpu, cv::cuda::GpuMat(), keypoint_Gframe_g, descriptor_Gframe_g);
+    detector->detectWithDescriptors(frame_gpu, cv::cuda::GpuMat(), keypoint_frame_g, descriptor_frame_g);
 
-    cv::FlannBasedMatcher matcher;
     std::vector<cv::DMatch>matches;
-    matcher.match(descriptor_Gframe, descriptor_frame, matches);
+    cv::Ptr<cv::cuda::DescriptorMatcher> matcher = cv::cuda::DescriptorMatcher::createBFMatcher(cv::NORM_L2);;
+    matcher->match(descriptor_Gframe_g, descriptor_frame_g, matches);
+
+    std::vector<cv::KeyPoint>keypoint_Gframe, keypoint_frame;
+    detector->downloadKeypoints(keypoint_Gframe_g, keypoint_Gframe);
+    detector->downloadKeypoints(keypoint_frame_g, keypoint_frame);
 
     double Max = 0.0;
     for (int i = 0; i < matches.size(); i++)

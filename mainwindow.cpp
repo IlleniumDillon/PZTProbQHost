@@ -9,6 +9,26 @@ MainWindow::MainWindow(QWidget *parent)
 {
     ui->setupUi(this);
 
+    int num_devices = cv::cuda::getCudaEnabledDeviceCount();
+    if (num_devices <= 0)
+    {
+        std::cerr << "There is no device." << std::endl;
+    }
+    int enable_device_id = -1;
+    for (int i = 0; i < num_devices; i++)
+    {
+        cv::cuda::DeviceInfo dev_info(i);
+        if (dev_info.isCompatible())
+        {
+            enable_device_id = i;
+        }
+    }
+    if (enable_device_id < 0)
+    {
+        std::cerr << "GPU module isn't built for GPU" << std::endl;
+    }
+    cv::cuda::setDevice(enable_device_id);
+
     planner = new QPlanner;
     vision = new QVision;
     Prob = new QProbDevice;
@@ -26,6 +46,7 @@ MainWindow::MainWindow(QWidget *parent)
     vision->QVision_Start();
 
     connect(vision,SIGNAL(QVision_NewFrameReady(cv::Mat)),this,SLOT(showFrame(cv::Mat)));
+    connect(this,SIGNAL(GframeReady()),this,SLOT(showGframe()));
 
     planner->moveToThread(&QPlannerThread);
     vision->moveToThread(&QVisionThread);
@@ -100,17 +121,16 @@ void MainWindow::timerEvent(QTimerEvent *e)
 {
     if(e->timerId() == timerId)
     {
-        if(state == STATE_SCAN)
+        if(state == STATE_SCAN_FINISH)
         {
             if(watcher.isFinished())
             {
                 ui->pushButtonScan->setText("scan");
                 state = STATE_IDLE;
                 vision->QVision_GframeFix();
-                cv::Mat show;
-                cv::cvtColor(vision->Gframe,show,cv::COLOR_BGR2GRAY);
-                QImage img(show.data,show.cols,show.rows,QImage::Format_Grayscale8);
-                ui->labelGImg->setPixmap(QPixmap::fromImage(img).scaled(ui->labelGImg->size(),Qt::KeepAspectRatio));
+                //showGframe();
+                QFuture<void> thread = QtConcurrent::run(&MainWindow::showGframe,this);
+                //emit GframeReady();
                 //cv::imshow("temp",vision->Gframe);
             }
         }
@@ -199,77 +219,37 @@ void MainWindow::runInThread()
             {
                 for(int y = 0; y < 10; y++)
                 {
-                    //QTime _Timer = QTime::currentTime().addMSecs(1000);
-
                     float data[] = {(float)x*1.0f,(float)y*1.0f,0};
                     PZT->Device_SendTarget<float>(data,3);
-
-                    //QThread::msleep(1500);
-                    QTime _Timer = QTime::currentTime().addMSecs(400);
-                    while( QTime::currentTime() < _Timer ) ;//QCoreApplication::processEvents(QEventLoop::AllEvents, 100);
-
+                    QTime _Timer = QTime::currentTime().addMSecs(500);
+                    while( QTime::currentTime() < _Timer ) QCoreApplication::processEvents(QEventLoop::AllEvents, 100);
                     vision->QVision_GframeProcessOnce();
-                    cv::Mat show;
-                    cv::cvtColor(vision->Gframe,show,cv::COLOR_BGR2GRAY);
-                    //QImage img = QImage(show.cols,show.rows,QImage::Format_Grayscale8);
-                    QImage img(show.data,show.cols,show.rows,QImage::Format_Grayscale8);
-                    /*for(int i = 0; i < show.cols; i++)
-                    {
-                        for(int j = 0; j < show.rows; j++)
-                        {
-                            uchar data = show.at<uchar>(j,i);
-                            img.setPixel(i,j,qRgb(data,data,data));
-                        }
-                    }*/
-                    ui->labelGImg->setPixmap(QPixmap::fromImage(img).scaled(ui->labelGImg->size(),Qt::KeepAspectRatio));
+                    //QCoreApplication::processEvents(QEventLoop::AllEvents, 100);
+                    emit GframeReady();//showGframe();
                 }
             }
             else
             {
                 for(int y = 9; y >= 0; y--)
                 {
-                    //QTime _Timer = QTime::currentTime().addMSecs(1000);
-
                     float data[] = {(float)x*1.0f,(float)y*1.0f,0};
                     PZT->Device_SendTarget<float>(data,3);
-
-                    //QThread::msleep(1500);
-                    QTime _Timer = QTime::currentTime().addMSecs(400);
-                    while( QTime::currentTime() < _Timer ) ;//QCoreApplication::processEvents(QEventLoop::AllEvents, 100);
-
+                    QTime _Timer = QTime::currentTime().addMSecs(500);
+                    while( QTime::currentTime() < _Timer ) QCoreApplication::processEvents(QEventLoop::AllEvents, 100);
                     vision->QVision_GframeProcessOnce();
-                    cv::Mat show;
-                    cv::cvtColor(vision->Gframe,show,cv::COLOR_BGR2GRAY);
-                    //QImage img = QImage(show.cols,show.rows,QImage::Format_Grayscale8);
-                    QImage img(show.data,show.cols,show.rows,QImage::Format_Grayscale8);
-                    /*for(int i = 0; i < vision->Gframe.cols; i++)
-                    {
-                        for(int j = 0; j < vision->Gframe.rows; j++)
-                        {
-                            //qDebug()<<i<<" "<<j;
-                            uchar data = vision->Gframe.at<uchar>(j,i);
-                            img.setPixel(i,j,qRgb(data,data,data));
-                        }
-                    }*/
-                    ui->labelGImg->setPixmap(QPixmap::fromImage(img).scaled(ui->labelGImg->size(),Qt::KeepAspectRatio));
+                    //QCoreApplication::processEvents(QEventLoop::AllEvents, 100);
+                    emit GframeReady();//showGframe();
                 }
             }
         }
         for(int x = 9; x >= 0; x--)
         {
             QTime _Timer = QTime::currentTime().addMSecs(200);
-
             float data[] = {(float)x*1.0f,0,0};
             PZT->Device_SendTarget<float>(data,3);
-
-            //QThread::msleep(1000);
             while( QTime::currentTime() < _Timer ) ;//QCoreApplication::processEvents(QEventLoop::AllEvents, 100);
         }
-//        for(int i = 0; i < vision->images.size(); i ++)
-//        {
-//            QString path = QString("D:\\pztProb\\hostCode\\QHost\\img_x10_%1.jpg").arg(i);
-//            cv::imwrite(path.toStdString(),vision->images.at(i));
-//        }
+        state = STATE_SCAN_FINISH;
     }
     else if(state == STATE_INIT)
     {
@@ -290,13 +270,26 @@ void MainWindow::runInThread()
     }
 }
 
+void MainWindow::showGframe()
+{
+    /*Mat show(vision->Gframe.size(),vision->Gframe.type());
+    for (int a = 0; a < show.rows; a++)
+    {
+        for (int b = 0; b < show.cols; b++)
+        {
+            uchar tempPix = vision->Gframe.at<uchar>(a,b);
+            show.at<uchar>(a,b) = tempPix;
+        }
+    }*/
+    Mat show = vision->Gframe;
+    QImage img(show.data,show.cols,show.rows,QImage::Format_Grayscale8);
+    ui->labelGImg->setPixmap(QPixmap::fromImage(img).scaled(ui->labelGImg->size(),Qt::KeepAspectRatio));
+}
+
 void MainWindow::showFrame(cv::Mat frame)
 {
     QImage img = QImage(frame.data,frame.cols,frame.rows,QImage::Format_Grayscale8);
-
     ui->labelImg->setPixmap(QPixmap::fromImage(img).scaled(ui->labelImg->size(),Qt::KeepAspectRatio));
-
-    //QFuture<void> thread = QtConcurrent::run(&MainWindow::runInThread,this,frame);
 }
 
 void MainWindow::on_pushButtonScan_clicked()
